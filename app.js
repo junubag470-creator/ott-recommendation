@@ -780,6 +780,11 @@ function generateRecommendations() {
           text: `선호 장르 ${g} 포함`,
           score: score
         });
+      } else if (score < 0) {
+        reasons.push({
+          text: `비선호 장르 ${g} 포함`,
+          score: score
+        });
       }
     });
 
@@ -790,6 +795,11 @@ function generateRecommendations() {
       if (score > 0) {
         reasons.push({
           text: `선호 배우 ${a} 출연`,
+          score: score
+        });
+      } else if (score < 0) {
+        reasons.push({
+          text: `비선호 배우 ${a} 출연`,
           score: score
         });
       }
@@ -803,6 +813,11 @@ function generateRecommendations() {
         text: `선호 감독 ${movie.director} 작품`,
         score: dScore
       });
+    } else if (dScore < 0) {
+      reasons.push({
+        text: `비선호 감독 ${movie.director} 작품`,
+        score: dScore
+      });
     }
 
     const totalScore = genreSum + actorSum + directorSum;
@@ -814,40 +829,18 @@ function generateRecommendations() {
     };
   });
 
-  // 3. Filter candidates where recommendation score > 0
-  // PRD: "추천 점수가 0 이하인 작품은 추천 대상에서 제외한다."
-  let filteredList = scoredCandidates.filter(c => c.totalScore > 0);
-
-  // 4. Sort by score descending
-  filteredList.sort((a, b) => b.totalScore - a.totalScore);
-
-  // 5. Select top 3 recommendations
-  let finalRecommendations = filteredList.slice(0, 3);
-
-  // Fallback: If less than 3 movies have score > 0, fill with rest of DB based on initial matchRate
-  if (finalRecommendations.length < 3) {
-    const filledIds = finalRecommendations.map(r => r.movie.id);
-    const fallbackPool = candidates.filter(m => !filledIds.includes(m.id));
-
-    // Sort fallback pool by original matchRate
-    fallbackPool.sort((a, b) => b.matchRate - a.matchRate);
-
-    // Add fallback items until we have 3
-    for (let m of fallbackPool) {
-      if (finalRecommendations.length >= 3) break;
-
-      // Let's fabricate a default recommendation entry
-      finalRecommendations.push({
-        movie: m,
-        totalScore: Math.max(10, Math.floor(m.matchRate / 2)), // Friendly default score
-        reasons: [
-          { text: "시청률 및 대중적인 높은 평점 반영", score: 10 },
-          { text: "유사 추천 매칭 시스템 추천", score: 5 }
-        ],
-        isFallback: true
-      });
+  // 3. Sort all candidates
+  // - First by totalScore descending
+  // - Break ties by the movie's TMDB rating descending
+  scoredCandidates.sort((a, b) => {
+    if (b.totalScore !== a.totalScore) {
+      return b.totalScore - a.totalScore;
     }
-  }
+    return b.movie.rating - a.movie.rating;
+  });
+
+  // 4. Select top 3 recommendations (we don't filter c.totalScore > 0 so we always have a full 3 recommendations, no fake fallback data)
+  const finalRecommendations = scoredCandidates.slice(0, 3);
 
   // Render recommendations screen
   renderRecommendations(finalRecommendations);
@@ -867,13 +860,18 @@ function renderRecommendations(recs) {
     }).join("");
 
     // Map recommendation reasons
-    const reasonsHTML = rec.reasons.map(reason => `
-      <li class="recommend-reason-item">
-        <span class="reason-check">✓</span>
-        <span>${reason.text}</span>
-        <span class="reason-score">(+${reason.score})</span>
-      </li>
-    `).join("");
+    const reasonsHTML = rec.reasons.map(reason => {
+      const scoreStr = reason.score > 0 ? `+${reason.score}` : `${reason.score}`;
+      const icon = reason.score > 0 ? "✓" : "✕";
+      const iconClass = reason.score > 0 ? "reason-check" : "reason-cross";
+      return `
+        <li class="recommend-reason-item">
+          <span class="${iconClass}">${icon}</span>
+          <span>${reason.text}</span>
+          <span class="reason-score">(${scoreStr})</span>
+        </li>
+      `;
+    }).join("");
 
     const cardEl = document.createElement("div");
     cardEl.className = "recommend-card";
@@ -915,7 +913,7 @@ function renderRecommendations(recs) {
         
         <div class="recommend-reasons-title">추천 이유</div>
         <ul class="recommend-reasons-list">
-          ${reasonsHTML || '<li class="recommend-reason-item text-muted">선호 취향 매칭 완료</li>'}
+          ${reasonsHTML || '<li class="recommend-reason-item text-muted"><span class="reason-check">✓</span> <span>선호/비선호 선택 없음 (기본 추천)</span> <span class="reason-score">(0)</span></li>'}
         </ul>
         
         <div class="ott-platforms-wrapper">

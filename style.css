@@ -1131,6 +1131,12 @@ button, input {
   flex-shrink: 0;
 }
 
+.reason-cross {
+  color: #ff3b30;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
 .reason-score {
   color: var(--text-muted);
   font-size: 0.78rem;
